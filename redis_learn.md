@@ -289,7 +289,56 @@ Redis 中集合是通过哈希表实现的，所以添加，删除，查找的�
 
 集合中最大的成员数为$2^{32}-1$ (4294967295, 每个集合可存储40多亿个成员).
 
-Set最常用的操作是向集合加入或删除元素, 判断某个元素是否存在, 多个集合类型之间还可以做并集, 交集和差集运算.
+Set最常用的操作是向集合加入或删除元素, 判断某个元素是否存在, 多个集合类型之间还可以做并集, 交集和差集运算.\
+
+```shell
+#向集合添加一个或多个成员
+SADD key member1 [member2] 
+
+#获取集合的成员数
+SCARD key 
+
+#返回给定所有集合的差集
+SDIFF key1 [key2] 
+
+#返回给定所有集合的差集并存储在destination中
+SDIFFSTORE destination key1 [key2] 
+
+#返回给定所有集合的交集
+SINTER key1 [key2] 
+
+#返回给定所有集合的交集并存储在destination中
+SINTERSTORE destination key1 [key2] 
+
+#判断 member 元素是否是集合 key 的成员
+SISMEMBER key member 
+
+#返回集合中的所有成员
+SMEMBERS key 
+
+#将 member 元素从 source 集合移动到 destination 集合
+SMOVE source destination member 
+
+#移除并返回集合中的一个随机元素
+SPOP key 
+
+#返回集合中一个或多个随机数
+SRANDMEMBER key [count] 
+
+#移除集合中一个或多个成员
+SREM key member1 [member2] 
+
+#返回所有给定集合的并集
+SUNION key1 [key2] 
+
+#所有给定集合的并集存储在 destination 集合中
+SUNIONSTORE destination key1 [key2] 
+
+#迭代集合中的元素
+SSCAN key cursor [MATCH pattern] [COUNT count] 
+```
+
+
 
 
 
