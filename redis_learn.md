@@ -1,4 +1,7 @@
 # Redis Document
+
+
+
 ## 一. Redis 综合概述
 ## 二. Redis 搭建教程 -- centos7.2/ubuntu
 - 下载地址：https://redis.io/download,下载最新稳定版本.
@@ -69,10 +72,10 @@ del key
 #序列化给定key, 并返回被序列化的值.
 dump key 
 
-#检查给定key是否存在.
+#检查给定key是否存在. 存在返回1， 不存在返回0
 exists key 
 
-#为给定key设置过期时间, 以秒计.
+#为给定key设置过期时间, 以秒计. 过期后删除
 expire key seconds
 
 #EXPIREAT的作用和EXPIRE类似, 都用于为key设置过期时间. 不同在于EXPIREAT命令接受的时间参数是UNIX时间戳(unix timestamp).
@@ -337,6 +340,98 @@ SUNIONSTORE destination key1 [key2]
 #迭代集合中的元素
 SSCAN key cursor [MATCH pattern] [COUNT count] 
 ```
+### 5.6  有序集合(sorted set) 
+有序集合和集合一样也是string类型元素的集合,且不允许重复的成员。
+
+不同的是每个元素都会关联一个double类型的分数。redis正是通过分数来为集合中的成员进行从小到大的排序。
+
+有序集合的成员是唯一的,但分数(score)却可以重复。
+
+集合是通过哈希表实现的，所以添加，删除，查找的复杂度都是O(1)。 集合中最大的成员数为 $2^{32} - 1$ (4294967295, 每个集合可存储40多亿个成员)
+
+> - 集合和有序集合的区别：
+>> 1. 列表类型是通过链表实现的, 获取靠近两端的数据速度极快, 但是元素增多后, 访问中间数据的速度会很慢，所以他更加适合实现如"新鲜事"或者"日志"这样很少访问中间元素的应用
+>> 2. 有序集合是使用散列表和跳跃表(skip list)实现的, 所以读取中间的数据也很快$O(log(N))$
+>>>其实在redis sorted sets里面当items内容大于64的时候同时使用了hash和skiplist两种设计实现。这也会为了排序和查找性能做的优化。所以如上可知： 
+添加和删除都需要修改skiplist，所以复杂度为O(log(n))。 
+但是如果仅仅是查找元素的话可以直接使用hash，其复杂度为O(1) 
+其他的range操作复杂度一般为O(log(n))
+当然如果是小于64的时候，因为是采用了ziplist的设计，其时间复杂度为O(n)
+>> 3. 列表不能简单的调整某个元素的位置, 但是有序集合可以(通过更改元素分数)
+>> 4. 有序类型要比列表类型更耗费内存
+> - 集合和有序集合的相似点：
+>> 1. 二者都是有序的
+>> 2. 二者都可以获得某一范围的元素
+
+
+
+
+
+```shell
+#向有序集合添加一个或多个成员，或者更新已存在成员的分数
+ZADD key score1 member1 [score2 member2]
+
+#获取有序集合的成员数
+ZCARD key
+
+#计算在有序集合中指定区间分数的成员数
+ZCOUNT key min max
+
+#有序集合中对指定成员的分数加上增量increment
+ZINCRBY key increment member
+
+#计算给定的一个或多个有序集的交集并将结果集存储在新的有序集合key中
+ZINTERSTORE destination numkeys key [key ...]
+
+#在有序集合中计算指定字典区间内成员数量
+ZLEXCOUNT key min max
+
+#通过索引区间返回有序集合成指定区间内的成员
+ZRANGE key start stop [WITHSCORES]
+
+#通过字典区间返回有序集合的成员
+ZRANGEBYLEX key min max [LIMIT offset count]
+
+#通过分数返回有序集合指定区间内的成员
+ZRANGEBYSCORE key min max [WITHSCORES] [LIMIT]
+
+#返回有序集合中指定成员的索引
+ZRANK key member
+
+#移除有序集合中的一个或多个成员
+ZREM key member [member ...]
+
+#移除有序集合中给定的字典区间的所有成员
+ZREMRANGEBYLEX key min max
+
+#移除有序集合中给定的排名区间的所有成员
+ZREMRANGEBYRANK key start stop
+
+#移除有序集合中给定的分数区间的所有成员
+ZREMRANGEBYSCORE key min max
+
+#返回有序集中指定区间内的成员，通过索引，分数从高到底
+ZREVRANGE key start stop [WITHSCORES]
+
+#返回有序集中指定分数区间内的成员，分数从高到低排序
+ZREVRANGEBYSCORE key max min [WITHSCORES]
+
+#返回有序集合中指定成员的排名，有序集成员按分数值递减(从大到小)排序
+ZREVRANK key member
+
+#返回有序集中，成员的分数值
+ZSCORE key member
+
+#计算给定的一个或多个有序集的并集，并存储在新的 key 中
+ZUNIONSTORE destination numkeys key [key ...]
+
+#迭代有序集合中的元素（包括元素成员和元素分值）
+ZSCAN key cursor [MATCH pattern] [COUNT count]
+```
+
+
+
+
 
 
 
