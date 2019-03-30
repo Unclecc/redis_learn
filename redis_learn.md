@@ -10,7 +10,7 @@
   $ wget http://download.redis.io/releases/redis-5.0.4.tar.gz
   $ tar -zxvf redis-5.0.4.tar.gz
   $ cd redis-5.0.4
-  # 有些机器没有安装gcc, 会导致make报错, 可以yum install gcc 或者 sudo apt install gcc 删除原来的文件夹再解压一个
+  # 有些机器没有安装gcc, 会导致make报错, 可以yum install gcc(centos)或者 sudo apt install gcc(ubuntu) 删除原来的文件夹再解压一个
   $ make
 ```
 - make完后 redis-5.0.4 目录下会出现编译后的redis服务程序redis-server, 还有用于测试的客户端程序redis-cli,两个程序位于安装目录 src 目录下. 下面启动redis服务:
@@ -662,9 +662,37 @@ redis>set a 3
 redis>exec
 redis>get a # a = 2 因为watch之后a发生了改变, 不会执行事务
 ```
-## 7 发布订阅 //TODO
+## 7 发布订阅
+Redis 发布订阅(pub/sub)是一种消息通信模式：发送者(pub)发送消息, 订阅者(sub)接收消息. 
 
+Redis 客户端可以订阅任意数量的频道.
+```shell
+#订阅一个或多个符合给定模式的频道. 
+PSUBSCRIBE pattern [pattern ...] 
 
+#查看订阅与发布系统状态. 
+PUBSUB subcommand [argument [argument ...]] 
+
+#将信息发送到指定的频道. 
+PUBLISH channel message 
+
+#退订所有给定模式的频道. 
+PUNSUBSCRIBE [pattern [pattern ...]] 
+
+#订阅给定的一个或多个频道的信息. 
+SUBSCRIBE channel [channel ...] 
+
+# 指退订给定的频道
+UNSUBSCRIBE [channel [channel ...]] 
+
+```
+
+同样, 订阅可以按照规则订阅. 
+```shell
+# 可以匹配channel.1 / channel.10
+psubscribe channel.?*
+
+```
 
 ## 8 Java连接Redis --> Jedis
 ### 8.1 Jedis简介
@@ -701,21 +729,6 @@ public class RedisCliManager {
         jedis.disconnect();
     }
 }
-
-// 输出结果:
-score:4
-score:6
-itemscore:1
-itemscore:2
-mylist
-myzset
-score:2
-itemscore:6
-itemscore:4
-score:8
-mylistalpha
-myset
-itemscore:8
 ```
 可能会出现以下错误:
 ```java
@@ -732,13 +745,136 @@ redis.clients.jedis.exceptions.JedisConnectionException: java.net.ConnectExcepti
 
 ## 9 Redisson -- 分布式锁 //TODO
 
-## 10. 管道 // TODO
+## 10. 管道
+Redis是一种基于客户端-服务端模型以及请求/响应协议的TCP服务. 这意味着通常情况下一个请求会遵循以下步骤：
 
-## 11. Redis 脚本 //TODO
+- 客户端向服务端发送一个查询请求, 并监听Socket返回, 通常是以阻塞模式, 等待服务端响应.
+- 服务端处理命令, 并将结果返回给客户端.
+  
+Redis 管道技术可以在服务端未响应时, 客户端可以继续向服务端发送请求, 并最终一次性读取所有服务端的响应. 
+
+```java
+package com.rediscli.test;
+
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.Pipeline;
+import redis.clients.jedis.Response;
+
+import java.util.List;
+
+public class TestRedisPipeline {
+
+
+
+    private Jedis jedis;
+
+    @Before
+    public void before() {
+        this.jedis = new Jedis("centos01", 6379);
+        this.jedis.connect();
+
+        //System.out.println(jedis.isConnected());
+    }
+
+    @Test
+    public void test() {
+
+        Pipeline pipelined = jedis.pipelined();
+        pipelined.set("pipeline", String.valueOf(1));
+        pipelined.set("pipeline", String.valueOf(3));
+        pipelined.set("pipeline", String.valueOf(2));
+        // 可以拿单个的返回结果
+        Response<String> pipeline = pipelined.get("pipeline");
+        List<Object> objects = pipelined.syncAndReturnAll();
+        // 2
+        System.out.println(pipeline.get().toString());
+        // [OK, OK, OK, 2]
+        System.out.println(objects);
+
+    }
+
+
+    @After
+    public void after() {
+        this.jedis.disconnect();
+    }
+
+}
+```
+
+
+
+
+## 11. Redis 脚本 //TODO 等学完集群再来看一下lua脚本与集群的问题
 ### 1. 客户端脚本
 ### 2. Jedis脚本
 
 
+
+## 12. 持久化
+### 12.1 Redis 提供了多种不同级别的持久化方式：
+
+- RDB 持久化可以在指定的时间间隔内生成数据集的时间点快照（point-in-time snapshot）. 
+- AOF 持久化记录服务器执行的所有写操作命令, 并在服务器启动时, 通过重新执行这些命令来还原数据集.  AOF 文件中的命令全部以 Redis 协议的格式来保存, 新命令会被追加到文件的末尾.  Redis 还可以在后台对 AOF 文件进行重写（rewrite）, 使得 AOF 文件的体积不会超出保存数据集状态所需的实际大小. 
+- Redis 还可以同时使用 AOF 持久化和 RDB 持久化.  在这种情况下,  当 Redis 重启时,  它会优先使用 AOF 文件来还原数据集,  因为 AOF 文件保存的数据集通常比 RDB 文件所保存的数据集更完整. 
+- 你甚至可以关闭持久化功能, 让数据只在服务器运行时存在. 
+
+### 12.2 RDB
+> 优点
+> - RDB 是一个非常紧凑（compact）的文件, 它保存了 Redis 在某个时间点上的数据集.  这种文件非常适合用于进行备份： 比如说, 你可以在最近的 24 小时内, 每小时备份一次 RDB 文件, 并且在每个月的每一天, 也备份一个 RDB 文件.  这样的话, 即使遇上问题, 也可以随时将数据集还原到不同的版本. 
+> - RDB 非常适用于灾难恢复（disaster recovery）：它只有一个文件, 并且内容都非常紧凑, 可以（在加密后）将它传送到别的数据中心, 或者亚马逊 S3 中. 
+> - RDB 可以最大化 Redis 的性能：父进程在保存 RDB 文件时唯一要做的就是 fork 出一个子进程, 然后这个子进程就会处理接下来的所有保存工作, 父进程无须执行任何磁盘 I/O 操作. 
+> - RDB 在恢复大数据集时的速度比 AOF 的恢复速度要快. 
+
+
+> 缺点
+> - 如果你需要尽量避免在服务器故障时丢失数据, 那么 RDB 不适合你.  虽然 Redis 允许你设置不同的保存点（save point）来控制保存 RDB 文件的频率,  但是,  因为RDB 文件需要保存整个数据集的状态,  所以它并不是一个轻松的操作.  因此你可能会至少 5 分钟才保存一次 RDB 文件.  在这种情况下,  一旦发生故障停机,  你就可能会丢失好几分钟的数据. 
+> - 每次保存 RDB 的时候, Redis 都要 fork() 出一个子进程, 并由子进程来进行实际的持久化工作.  在数据集比较庞大时,  fork() 可能会非常耗时, 造成服务器在某某毫秒内停止处理客户端； 如果数据集非常巨大, 并且 CPU 时间非常紧张的话, 那么这种停止时间甚至可能会长达整整一秒.  虽然 AOF 重写也需要进行 fork() , 但无论 AOF 重写的执行间隔有多长, 数据的耐久性都不会有任何损失. 
+
+### 12.3 AOF
+> 优点
+> 使用 AOF 持久化会让 Redis 变得非常耐久（much more durable）：你可以设置不同的 fsync 策略, 比如无 fsync , 每秒钟一次 fsync , 或者每次执行写入命令时 fsync .  AOF 的默认策略为每秒钟 fsync 一次, 在这种配置下, Redis 仍然可以保持良好的性能, 并且就算发生故障停机, 也最多只会丢失一秒钟的数据（ fsync 会在后台线程执行, 所以主线程可以继续努力地处理命令请求）. 
+AOF 文件是一个只进行追加操作的日志文件（append only log）,  因此对 AOF 文件的写入不需要进行 seek ,  即使日志因为某些原因而包含了未写入完整的命令（比如写入时磁盘已满, 写入中途停机, 等等）,  redis-check-aof 工具也可以轻易地修复这种问题. 
+> - Redis 可以在 AOF 文件体积变得过大时, 自动地在后台对 AOF 进行重写： 重写后的新 AOF 文件包含了恢复当前数据集所需的最小命令集合.  整个重写操作是绝对安全的, 因为 Redis 在创建新 AOF 文件的过程中, 会继续将命令追加到现有的 AOF 文件里面, 即使重写过程中发生停机, 现有的 AOF 文件也不会丢失.  而一旦新 AOF 文件创建完毕, Redis 就会从旧 AOF 文件切换到新 AOF 文件, 并开始对新 AOF 文件进行追加操作. 
+> - AOF 文件有序地保存了对数据库执行的所有写入操作,  这些写入操作以 Redis 协议的格式保存,  因此 AOF 文件的内容非常容易被人读懂,  对文件进行分析（parse）也很轻松.  导出（export） AOF 文件也非常简单： 举个例子,  如果你不小心执行了 FLUSHALL 命令,  但只要 AOF 文件未被重写,  那么只要停止服务器,  移除 AOF 文件末尾的 FLUSHALL 命令,  并重启 Redis ,  就可以将数据集恢复到 FLUSHALL 执行之前的状态. 
+
+> 缺点
+> - 对于相同的数据集来说, AOF 文件的体积通常要大于 RDB 文件的体积. 
+根据所使用的 fsync 策略, AOF 的速度可能会慢于 RDB .  在一般情况下,  每秒 fsync 的性能依然非常高,  而关闭 fsync 可以让 AOF 的速度和 RDB 一样快,  即使在高负荷之下也是如此.  不过在处理巨大的写入载入时, RDB 可以提供更有保证的最大延迟时间（latency）. 
+> - AOF 在过去曾经发生过这样的 bug ： 因为个别命令的原因, 导致 AOF 文件在重新载入时, 无法将数据集恢复成保存时的原样.  （举个例子, 阻塞命令 BRPOPLPUSH 就曾经引起过这样的 bug . ） 测试套件里为这种情况添加了测试： 它们会自动生成随机的、复杂的数据集,  并通过重新载入这些数据来确保一切正常.  虽然这种 bug 在 AOF 文件中并不常见,  但是对比来说,  RDB 几乎是不可能出现这种 bug 的. 
+
+### 12.4 持久化策略选择
+在介绍持久化策略之前, 首先要明白无论是RDB还是AOF, 持久化的开启都是要付出性能方面代价的：对于RDB持久化, 一方面是bgsave在进行fork操作时Redis主进程会阻塞, 另一方面, 子进程向硬盘写数据也会带来IO压力；对于AOF持久化, 向硬盘写数据的频率大大提高(everysec策略下为秒级), IO压力更大, 甚至可能造成AOF追加阻塞问题（后面会详细介绍这种阻塞）, 此外, AOF文件的重写与RDB的bgsave类似, 会有fork时的阻塞和子进程的IO压力问题. 相对来说, 由于AOF向硬盘中写数据的频率更高, 因此对Redis主进程性能的影响会更大. 
+
+在实际生产环境中, 根据数据量、应用对数据的安全要求、预算限制等不同情况, 会有各种各样的持久化策略；如完全不使用任何持久化、使用RDB或AOF的一种, 或同时开启RDB和AOF持久化等. 此外, 持久化的选择必须与Redis的主从策略一起考虑, 因为主从复制与持久化同样具有数据备份的功能, 而且主机master和从机slave可以独立的选择持久化方案. 
+
+下面分场景来讨论持久化策略的选择, 下面的讨论也只是作为参考, 实际方案可能更复杂更具多样性. 
+
+- 1) 如果Redis中的数据完全丢弃也没有关系（如Redis完全用作DB层数据的cache）, 那么无论是单机, 还是主从架构, 都可以不进行任何持久化. 
+
+- 2) 在单机环境下（对于个人开发者, 这种情况可能比较常见）, 如果可以接受十几分钟或更多的数据丢失, 选择RDB对Redis的性能更加有利；如果只能接受秒级别的数据丢失, 应该选择AOF. 
+
+- 3) 在多数情况下, 我们都会配置主从环境, slave的存在既可以实现数据的热备, 也可以进行读写分离分担Redis读请求, 以及在master宕掉后继续提供服务. 
+
+> 在这种情况下, 一种可行的做法是：
+> master：完全关闭持久化（包括RDB和AOF）, 这样可以让master的性能达到最好；
+> slave：关闭RDB, 开启AOF（如果对数据安全要求不高, 开启RDB关闭AOF也可以）, 并定时对持久化文件进行备份（如备份到其他文件夹, 并标记好备份的时间）；然后关闭AOF的自动重写, 然后添加定时任务, 在每天Redis闲时（如凌晨12点）调用bgrewriteaof. 
+> 这里需要解释一下, 为什么开启了主从复制, 可以实现数据的热备份, 还需要设置持久化呢？因为在一些特殊情况下, 主从复制仍然不足以保证数据的安全, 例如：
+> master和slave进程同时停止：考虑这样一种场景, 如果master和slave在同一栋大楼或同一个机房, 则一次停电事故就可能导致master和slave机器同时关机, Redis进程停止；如果没有持久化, 则面临的是数据的完全丢失. 
+> master误重启：考虑这样一种场景, master服务因为故障宕掉了, 如果系统中有自动拉起机制（即检测到服务停止后重启该服务）将master自动重启, 由于没有持久化文件, 那么master重启后数据是空的, slave同步数据也变成了空的；如果master和slave都没有持久化, 同样会面临数据的完全丢失. 需要注意的是, 即便是使用了哨兵（关于哨兵后面会有文章介绍）进行自动的主从切换, 也有可能在哨兵轮询到master之前, 便被自动拉起机制重启了. 因此, 应尽量避免“自动拉起机制”和“不做持久化”同时出现. 
+
+- 4）异地灾备：上述讨论的几种持久化策略, 针对的都是一般的系统故障, 如进程异常退出、宕机、断电等, 这些故障不会损坏硬盘. 但是对于一些可能导致硬盘损坏的灾难情况, 如火灾地震, 就需要进行异地灾备. 
+
+> 例如对于单机的情形, 可以定时将RDB文件或重写后的AOF文件, 通过scp拷贝到远程机器, 如阿里云、AWS等；对于主从的情形, 可以定时在master上执行bgsave, 然后将RDB文件拷贝到远程机器, 或者在slave上执行bgrewriteaof重写AOF文件后, 将AOF文件拷贝到远程机器上. 
+> 一般来说, 由于RDB文件文件小、恢复快, 因此灾难恢复常用RDB文件；异地备份的频率根据数据安全性的需要及其它条件来确定, 但最好不要低于一天一次. 
+
+## 13. 集群
+
+## 14. 管理
+### 14.1 内部编码优化:
 
 
 
